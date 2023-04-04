@@ -3,7 +3,7 @@
 // @namespace   wkdoublecheck
 // @description Allows retyping typo'd answers, or marking wrong when WK's typo tolerance is too lax.
 // @match       https://*.wanikani.com/*
-// @version     3.0.4
+// @version     3.0.5
 // @author      Robin Findley
 // @copyright   2017-2023, Robin Findley
 // @license     MIT; http://opensource.org/licenses/MIT
@@ -22,7 +22,7 @@ window.doublecheck = {};
 
 (function(gobj) {
 
-    /* global wkof, Stimulus, WaniKani, $ */
+    /* global wkof, Stimulus, WaniKani, importShim, $ */
 
     wkof.on_page_event({
         urls: [
@@ -381,7 +381,7 @@ window.doublecheck = {};
                 let percent_complete = Math.round(100*session_stats.complete/(session_stats.complete + session_stats.remaining));
                 quiz_progress.updateProgress({detail:{percentComplete:percent_complete}});
                 quiz_stats.percentCorrectTarget.innerText = (session_stats.answered ? Math.round(100 * session_stats.correct / session_stats.answered).toString() + '%' : '100%');
-                quiz_header.srsContainerTarget.hidden = true;
+                if (quiz_header.hasSrsContainerTarget) quiz_header.srsContainerTarget.hidden = true;
                 state = 'first_submit';
                 return;
             }
@@ -408,9 +408,9 @@ window.doublecheck = {};
         }
         if (!final_submit) {
             if (subject_stats.meaning.complete && subject_stats.reading.complete) {
-                srs_mgr.updateSRS({subject:subject,stats:subject_stats});
+                if (srs_mgr) srs_mgr.updateSRS({subject:subject,stats:subject_stats});
             } else {
-                quiz_header.srsContainerTarget.hidden = true;
+                if (quiz_header.hasSrsContainerTarget) quiz_header.srsContainerTarget.hidden = true;
             }
         } else {
             subject_stats_cache.set(subject.id, JSON.stringify(subject_stats));
@@ -652,7 +652,6 @@ window.doublecheck = {};
     function get_controller(name) {
         return Stimulus.getControllerForElementAndIdentifier(document.querySelector(`[data-controller~="${name}"]`),name);
     }
-    let auto_open = true;
 
     //------------------------------------------------------------------------
     // startup() - Install our intercept handlers, and add our Double-Check button and hotkey
@@ -671,13 +670,16 @@ window.doublecheck = {};
             quiz_stats = get_controller('quiz-statistics');
             quiz_progress = get_controller('quiz-progress');
             quiz_header = get_controller('quiz-header');
-            response_helpers = await import('lib/answer_checker/utils/response_helpers');
-            wanakana = await import('wanakana');
-            let AnswerChecker = (await import('lib/answer_checker/answer_checker')).default;
-            answer_checker = new AnswerChecker;
-            srs_map = new Map(JSON.parse(quiz_queue.subjectIdsWithSRSTarget.innerText));
-            let SRSManager = (await import('controllers/quiz_queue/srs_manager')).default;
-            srs_mgr = new SRSManager(srs_map);
+            response_helpers = await importShim('lib/answer_checker/utils/response_helpers');
+            wanakana = await importShim('wanakana');
+            answer_checker = Stimulus.controllers.find((c)=>c.answerChecker).answerChecker;
+            if (quiz_queue.hasSubjectIdsWithSRSTarget) {
+                srs_map = new Map(JSON.parse(quiz_queue.subjectIdsWithSRSTarget.innerText));
+                let SRSManager = (await importShim('controllers/quiz_queue/srs_manager')).default;
+                srs_mgr = new SRSManager(srs_map);
+            } else {
+                srs_mgr = undefined;
+            }
 
             old_submit_handler = quiz_input.submitAnswer;
             quiz_input.submitAnswer = new_submit_handler;
